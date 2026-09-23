@@ -1,0 +1,35 @@
+name: Single Library SQLite gate qualification
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'tests/single-library-sqlite-gate.mjs'
+      - '.github/workflows/single-library-sqlite-gate.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  qualify:
+    name: ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 10
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-latest, macos-15, ubuntu-24.04]
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: '24'
+      - name: Run single Library SQLite gate qualification
+        run: node tests/single-library-sqlite-gate.mjs
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: single-library-gate-${{ matrix.os }}
+          path: tests/single-library-gate-artifacts/*.json
+          if-no-files-found: warn
