@@ -1,0 +1,36 @@
+name: Mixed-version cutover qualification
+
+on:
+  push:
+    branches:
+      - 'test/mixed-version-cutover-*'
+    paths:
+      - 'tests/mixed-version-cutover.mjs'
+      - '.github/workflows/mixed-version-cutover.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  qualify:
+    name: ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 10
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-latest, macos-15, ubuntu-24.04]
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: '24'
+      - name: Run mixed-version cutover qualification
+        run: node tests/mixed-version-cutover.mjs
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: mixed-version-cutover-${{ matrix.os }}
+          path: tests/mixed-version-cutover-artifacts/*.json
+          if-no-files-found: warn
