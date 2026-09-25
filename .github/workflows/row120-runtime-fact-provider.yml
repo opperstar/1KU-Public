@@ -1,0 +1,38 @@
+name: ROW120 runtime fact provider qualification
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'tests/row120-runtime-fact-provider.mjs'
+      - '.github/workflows/row120-runtime-fact-provider.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  qualify:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-latest, macos-15, ubuntu-24.04]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 10
+
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: '24'
+
+      - name: Probe public/native runtime facts
+        run: node tests/row120-runtime-fact-provider.mjs
+
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: row120-runtime-fact-provider-${{ runner.os }}-${{ runner.arch }}
+          path: artifacts/row120-runtime-fact-provider-*.json
+          if-no-files-found: error
