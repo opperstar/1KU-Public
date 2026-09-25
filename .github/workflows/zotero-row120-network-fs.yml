@@ -12,8 +12,8 @@ permissions:
   contents: read
 
 jobs:
-  macos-nfs:
-    name: macOS NFS / node:sqlite row120 translation
+  macos-smb:
+    name: macOS SMB / node:sqlite row120 translation
     runs-on: macos-15
     timeout-minutes: 10
 
@@ -24,35 +24,39 @@ jobs:
         with:
           node-version: '24'
 
-      - name: Setup loopback NFS fixture
+      - name: Setup loopback SMB fixture
         shell: bash
         run: |
           set -euo pipefail
-          EXPORT_DIR="$RUNNER_TEMP/1ku-row120-nfs-export"
-          MOUNT_DIR="$RUNNER_TEMP/1ku-row120-nfs-mount"
+          EXPORT_DIR="$RUNNER_TEMP/1ku-row120-smb-export"
+          MOUNT_DIR="$RUNNER_TEMP/1ku-row120-smb-mount"
+          SHARE_NAME="IKURow120"
           mkdir -p "$EXPORT_DIR" "$MOUNT_DIR"
           chmod 777 "$EXPORT_DIR" "$MOUNT_DIR"
 
-          if [ -f /etc/exports ]; then
-            sudo cp /etc/exports "$RUNNER_TEMP/1ku-row120-exports.before"
-            echo 'ROW120_EXPORTS_EXISTED=1' >> "$GITHUB_ENV"
-          else
-            echo 'ROW120_EXPORTS_EXISTED=0' >> "$GITHUB_ENV"
-          fi
+          sudo /usr/sbin/sharing -a "$EXPORT_DIR" -S "$SHARE_NAME" -n "$SHARE_NAME" -s 001 -g 001 -R 0
+          /usr/sbin/sharing -l
 
-          printf '%s -mapall=%s:%s -network 127.0.0.1 -mask 255.255.255.255\n' \
-            "$EXPORT_DIR" "$(id -u)" "$(id -g)" | sudo tee /etc/exports >/dev/null
+          ATTEMPTS=0
+          until smbutil view -G //127.0.0.1 >"$RUNNER_TEMP/1ku-row120-smb-view.txt" 2>&1; do
+            ATTEMPTS=$((ATTEMPTS + 1))
+            if [ "$ATTEMPTS" -ge 10 ]; then
+              cat "$RUNNER_TEMP/1ku-row120-smb-view.txt"
+              exit 1
+            fi
+            sleep 1
+          done
+          cat "$RUNNER_TEMP/1ku-row120-smb-view.txt"
 
-          sudo nfsd enable
-          sudo nfsd restart
-          sudo mount_nfs -o vers=4.0,tcp "127.0.0.1:$EXPORT_DIR" "$MOUNT_DIR"
+          mount -t smbfs "//guest:@127.0.0.1/$SHARE_NAME" "$MOUNT_DIR"
 
           mount | grep "$MOUNT_DIR"
           FS_KIND="$(stat -f '%T' "$MOUNT_DIR")"
-          test "$FS_KIND" = 'nfs'
+          test "$FS_KIND" = 'smbfs'
 
           echo "ROW120_NETWORK_FS_ROOT=$MOUNT_DIR" >> "$GITHUB_ENV"
           echo "ROW120_NETWORK_FS_KIND=$FS_KIND" >> "$GITHUB_ENV"
+          echo "ROW120_SMB_SHARE_NAME=$SHARE_NAME" >> "$GITHUB_ENV"
 
       - name: Run Zotero row120 node:sqlite translation qualification
         run: node tests/zotero-row120-network-fs.mjs
@@ -60,21 +64,20 @@ jobs:
       - uses: actions/upload-artifact@v7
         if: always()
         with:
-          name: zotero-row120-macos-nfs
+          name: zotero-row120-macos-smb
           path: tests/zotero-row120-artifacts/*.json
           if-no-files-found: warn
 
-      - name: Cleanup loopback NFS fixture
+      - name: Cleanup loopback SMB fixture
         if: always()
         shell: bash
         run: |
           set +e
           if [ -n "${ROW120_NETWORK_FS_ROOT:-}" ]; then
-            sudo umount "$ROW120_NETWORK_FS_ROOT"
+            umount "$ROW120_NETWORK_FS_ROOT"
           fi
-          if [ "${ROW120_EXPORTS_EXISTED:-0}" = '1' ] && [ -f "$RUNNER_TEMP/1ku-row120-exports.before" ]; then
-            sudo cp "$RUNNER_TEMP/1ku-row120-exports.before" /etc/exports
+          if [ -n "${ROW120_SMB_SHARE_NAME:-}" ]; then
+            sudo /usr/sbin/sharing -r "$ROW120_SMB_SHARE_NAME"
           else
-            sudo rm -f /etc/exports
+            sudo /usr/sbin/sharing -r IKURow120
           fi
-          sudo nfsd restart
