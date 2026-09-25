@@ -1,0 +1,80 @@
+name: Zotero row120 network filesystem qualification
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'tests/zotero-row120-network-fs.mjs'
+      - '.github/workflows/zotero-row120-network-fs.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  macos-nfs:
+    name: macOS NFS / node:sqlite row120 translation
+    runs-on: macos-15
+    timeout-minutes: 10
+
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: '24'
+
+      - name: Setup loopback NFS fixture
+        shell: bash
+        run: |
+          set -euo pipefail
+          EXPORT_DIR="$RUNNER_TEMP/1ku-row120-nfs-export"
+          MOUNT_DIR="$RUNNER_TEMP/1ku-row120-nfs-mount"
+          mkdir -p "$EXPORT_DIR" "$MOUNT_DIR"
+          chmod 777 "$EXPORT_DIR" "$MOUNT_DIR"
+
+          if [ -f /etc/exports ]; then
+            sudo cp /etc/exports "$RUNNER_TEMP/1ku-row120-exports.before"
+            echo 'ROW120_EXPORTS_EXISTED=1' >> "$GITHUB_ENV"
+          else
+            echo 'ROW120_EXPORTS_EXISTED=0' >> "$GITHUB_ENV"
+          fi
+
+          printf '%s -mapall=%s:%s -network 127.0.0.1 -mask 255.255.255.255\n' \
+            "$EXPORT_DIR" "$(id -u)" "$(id -g)" | sudo tee /etc/exports >/dev/null
+
+          sudo nfsd enable
+          sudo nfsd restart
+          sudo mount_nfs -o vers=3,tcp "127.0.0.1:$EXPORT_DIR" "$MOUNT_DIR"
+
+          mount | grep "$MOUNT_DIR"
+          FS_KIND="$(stat -f '%T' "$MOUNT_DIR")"
+          test "$FS_KIND" = 'nfs'
+
+          echo "ROW120_NETWORK_FS_ROOT=$MOUNT_DIR" >> "$GITHUB_ENV"
+          echo "ROW120_NETWORK_FS_KIND=$FS_KIND" >> "$GITHUB_ENV"
+
+      - name: Run Zotero row120 node:sqlite translation qualification
+        run: node tests/zotero-row120-network-fs.mjs
+
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: zotero-row120-macos-nfs
+          path: tests/zotero-row120-artifacts/*.json
+          if-no-files-found: warn
+
+      - name: Cleanup loopback NFS fixture
+        if: always()
+        shell: bash
+        run: |
+          set +e
+          if [ -n "${ROW120_NETWORK_FS_ROOT:-}" ]; then
+            sudo umount "$ROW120_NETWORK_FS_ROOT"
+          fi
+          if [ "${ROW120_EXPORTS_EXISTED:-0}" = '1' ] && [ -f "$RUNNER_TEMP/1ku-row120-exports.before" ]; then
+            sudo cp "$RUNNER_TEMP/1ku-row120-exports.before" /etc/exports
+          else
+            sudo rm -f /etc/exports
+          fi
+          sudo nfsd restart
