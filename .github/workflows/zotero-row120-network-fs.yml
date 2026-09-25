@@ -12,9 +12,13 @@ permissions:
   contents: read
 
 jobs:
-  macos-node-sqlite-how:
-    name: macOS node:sqlite row120 HOW
-    runs-on: macos-15
+  qualify-frozen-route:
+    name: ${{ matrix.os }} row120 frozen route
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-latest, macos-15, ubuntu-24.04]
+    runs-on: ${{ matrix.os }}
     timeout-minutes: 10
 
     steps:
@@ -24,15 +28,12 @@ jobs:
         with:
           node-version: '24'
 
-      - name: Run row120 node:sqlite semantic qualification
-        env:
-          ROW120_NETWORK_FS_KIND: local-macos-substrate
-          ROW120_REAL_NETWORK_FS: '0'
+      - name: Run frozen row120 route qualification
         run: node tests/zotero-row120-network-fs.mjs
 
       - uses: actions/upload-artifact@v7
         if: always()
         with:
-          name: zotero-row120-macos-node-sqlite-how
+          name: zotero-row120-frozen-route-${{ runner.os }}-${{ runner.arch }}
           path: tests/zotero-row120-artifacts/*.json
           if-no-files-found: error
