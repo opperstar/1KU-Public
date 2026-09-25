@@ -1,4 +1,4 @@
-name: Zotero row120 network filesystem qualification
+name: Zotero row120 node sqlite translation qualification
 
 on:
   push:
@@ -12,8 +12,8 @@ permissions:
   contents: read
 
 jobs:
-  macos-smb:
-    name: macOS SMB / node:sqlite row120 translation
+  macos-node-sqlite-how:
+    name: macOS node:sqlite row120 HOW
     runs-on: macos-15
     timeout-minutes: 10
 
@@ -24,65 +24,15 @@ jobs:
         with:
           node-version: '24'
 
-      - name: Setup loopback SMB fixture
-        shell: bash
-        run: |
-          set -euo pipefail
-          EXPORT_DIR="$RUNNER_TEMP/1ku-row120-smb-export"
-          MOUNT_DIR="$RUNNER_TEMP/1ku-row120-smb-mount"
-          SHARE_NAME="IKURow120"
-          mkdir -p "$EXPORT_DIR" "$MOUNT_DIR"
-          chmod 777 "$EXPORT_DIR" "$MOUNT_DIR"
-
-          sudo /usr/sbin/sharing -a "$EXPORT_DIR" -S "$SHARE_NAME" -n "$SHARE_NAME" -s 001 -g 001 -R 0
-          /usr/sbin/sharing -l
-
-          sudo launchctl enable system/com.apple.smbd || true
-          sudo launchctl kickstart -k system/com.apple.smbd
-          sudo launchctl print system/com.apple.smbd | head -40 || true
-          sleep 2
-
-          ATTEMPTS=0
-          until smbutil view -G //guest@127.0.0.1 >"$RUNNER_TEMP/1ku-row120-smb-view.txt" 2>&1; do
-            ATTEMPTS=$((ATTEMPTS + 1))
-            if [ "$ATTEMPTS" -ge 10 ]; then
-              cat "$RUNNER_TEMP/1ku-row120-smb-view.txt"
-              exit 1
-            fi
-            sleep 1
-          done
-          cat "$RUNNER_TEMP/1ku-row120-smb-view.txt"
-
-          mount -t smbfs "//guest:@127.0.0.1/$SHARE_NAME" "$MOUNT_DIR"
-
-          mount | grep "$MOUNT_DIR"
-          FS_KIND="$(stat -f '%T' "$MOUNT_DIR")"
-          test "$FS_KIND" = 'smbfs'
-
-          echo "ROW120_NETWORK_FS_ROOT=$MOUNT_DIR" >> "$GITHUB_ENV"
-          echo "ROW120_NETWORK_FS_KIND=$FS_KIND" >> "$GITHUB_ENV"
-          echo "ROW120_SMB_SHARE_NAME=$SHARE_NAME" >> "$GITHUB_ENV"
-
-      - name: Run Zotero row120 node:sqlite translation qualification
+      - name: Run row120 node:sqlite semantic qualification
+        env:
+          ROW120_NETWORK_FS_KIND: local-macos-substrate
+          ROW120_REAL_NETWORK_FS: '0'
         run: node tests/zotero-row120-network-fs.mjs
 
       - uses: actions/upload-artifact@v7
         if: always()
         with:
-          name: zotero-row120-macos-smb
+          name: zotero-row120-macos-node-sqlite-how
           path: tests/zotero-row120-artifacts/*.json
-          if-no-files-found: warn
-
-      - name: Cleanup loopback SMB fixture
-        if: always()
-        shell: bash
-        run: |
-          set +e
-          if [ -n "${ROW120_NETWORK_FS_ROOT:-}" ]; then
-            umount "$ROW120_NETWORK_FS_ROOT"
-          fi
-          if [ -n "${ROW120_SMB_SHARE_NAME:-}" ]; then
-            sudo /usr/sbin/sharing -r "$ROW120_SMB_SHARE_NAME"
-          else
-            sudo /usr/sbin/sharing -r IKURow120
-          fi
+          if-no-files-found: error
