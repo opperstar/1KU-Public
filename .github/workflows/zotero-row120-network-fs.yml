@@ -45,7 +45,7 @@ jobs:
 
           sudo nfsd enable
           sudo nfsd restart
-          sudo mount_nfs -o vers=3,tcp "127.0.0.1:$EXPORT_DIR" "$MOUNT_DIR"
+          sudo mount_nfs -o vers=4.0,tcp "127.0.0.1:$EXPORT_DIR" "$MOUNT_DIR"
 
           mount | grep "$MOUNT_DIR"
           FS_KIND="$(stat -f '%T' "$MOUNT_DIR")"
