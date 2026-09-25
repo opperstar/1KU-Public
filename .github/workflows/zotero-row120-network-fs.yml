@@ -37,8 +37,13 @@ jobs:
           sudo /usr/sbin/sharing -a "$EXPORT_DIR" -S "$SHARE_NAME" -n "$SHARE_NAME" -s 001 -g 001 -R 0
           /usr/sbin/sharing -l
 
+          sudo launchctl enable system/com.apple.smbd || true
+          sudo launchctl kickstart -k system/com.apple.smbd
+          sudo launchctl print system/com.apple.smbd | head -40 || true
+          sleep 2
+
           ATTEMPTS=0
-          until smbutil view -G //127.0.0.1 >"$RUNNER_TEMP/1ku-row120-smb-view.txt" 2>&1; do
+          until smbutil view -G //guest@127.0.0.1 >"$RUNNER_TEMP/1ku-row120-smb-view.txt" 2>&1; do
             ATTEMPTS=$((ATTEMPTS + 1))
             if [ "$ATTEMPTS" -ge 10 ]; then
               cat "$RUNNER_TEMP/1ku-row120-smb-view.txt"
