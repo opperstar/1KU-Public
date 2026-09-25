@@ -94,8 +94,8 @@ function runContender(dbPath) {
 }
 
 async function qualificationMain() {
-  const networkRoot = process.env.ROW120_NETWORK_FS_ROOT;
-  if (!networkRoot) throw new Error('ROW120_NETWORK_FS_ROOT is required');
+  const networkRoot = process.env.ROW120_NETWORK_FS_ROOT || path.join(os.tmpdir(), '1ku-row120-local-substrate');
+  await fsp.mkdir(networkRoot, { recursive: true });
 
   const artifactDir = path.join(path.dirname(SELF), 'zotero-row120-artifacts');
   await fsp.mkdir(artifactDir, { recursive: true });
@@ -115,7 +115,8 @@ async function qualificationMain() {
     platform: process.platform,
     arch: process.arch,
     node: process.version,
-    fsKind: process.env.ROW120_NETWORK_FS_KIND ?? 'unknown-network-fs-fixture',
+    fsKind: process.env.ROW120_NETWORK_FS_KIND ?? 'local-macos-substrate',
+    realNetworkFilesystem: process.env.ROW120_REAL_NETWORK_FS === '1',
     networkRoot,
     startedAt: new Date().toISOString(),
   };
